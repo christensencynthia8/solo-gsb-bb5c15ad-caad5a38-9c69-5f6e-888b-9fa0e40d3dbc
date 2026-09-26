@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>口述录音去静音</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    max-width: 880px; margin: 0 auto; padding: 24px 16px 64px;
+    background: #f5f6f8; color: #222;
+  }
+  h1 { font-size: 22px; margin: 8px 0 20px; }
+  .card {
+    background: #fff; border: 1px solid #e3e5e8; border-radius: 10px;
+    padding: 18px 20px; margin-bottom: 18px;
+  }
+  .card h2 { font-size: 16px; margin: 0 0 14px; }
+  label { display: block; font-size: 13px; color: #555; margin-bottom: 4px; }
+  .row { display: flex; gap: 14px; flex-wrap: wrap; }
+  .field { flex: 1; min-width: 150px; }
+  input[type="number"], input[type="text"] {
+    width: 100%; padding: 8px 10px; border: 1px solid #ccc;
+    border-radius: 6px; font-size: 14px;
+  }
+  input[type="file"] { font-size: 14px; }
+  button {
+    background: #2563eb; color: #fff; border: none; border-radius: 6px;
+    padding: 9px 22px; font-size: 14px; cursor: pointer;
+  }
+  button:disabled { background: #9db6ec; cursor: wait; }
+  .hint { font-size: 12px; color: #999; margin-top: 4px; }
+  .stats { display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 12px; }
+  .stat b { display: block; font-size: 20px; color: #2563eb; }
+  .stat span { font-size: 12px; color: #777; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 7px 8px; border-bottom: 1px solid #eee; text-align: right; }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: #666; font-weight: 600; background: #fafbfc; }
+  audio { width: 100%; margin-top: 6px; }
+  .audio-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 640px) { .audio-grid { grid-template-columns: 1fr; } }
+  .actions { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+  .actions a {
+    display: inline-block; padding: 8px 16px; border-radius: 6px;
+    background: #eef2ff; color: #2563eb; text-decoration: none; font-size: 13px;
+  }
+  #error { color: #c0392b; font-size: 13px; margin-top: 10px; white-space: pre-wrap; }
+  #queryResult { margin-top: 10px; font-size: 14px; }
+  .removed { color: #c0392b; font-weight: 600; }
+  .kept { color: #1a7f37; font-weight: 600; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<h1>🎙️ 口述录音去静音</h1>
+
+<div class="card">
+  <h2>1. 上传音频并设置参数</h2>
+  <div class="row">
+    <div class="field" style="min-width:240px">
+      <label>音频文件（WAV / MP3）</label>
+      <input type="file" id="file" accept=".wav,.mp3,audio/wav,audio/mpeg">
+    </div>
+  </div>
+  <div class="row" style="margin-top:12px">
+    <div class="field">
+      <label>静音阈值（dB）</label>
+      <input type="number" id="threshold" value="-35" step="1" min="-90" max="0">
+      <div class="hint">低于该音量视为静音，常用 -30 ~ -45</div>
+    </div>
+    <div class="field">
+      <label>最短静音长度（秒）</label>
+      <input type="number" id="minSilence" value="0.5" step="0.1" min="0.05" max="60">
+      <div class="hint">超过该时长的静音才会被裁掉</div>
+    </div>
+    <div class="field">
+      <label>语音段前后保留（毫秒）</label>
+      <input type="number" id="padding" value="150" step="50" min="0" max="5000">
+      <div class="hint">避免切掉气口和尾音</div>
+    </div>
+  </div>
+  <div style="margin-top:14px">
+    <button id="processBtn">开始处理</button>
+    <span id="error"></span>
+  </div>
+</div>
+
+<div id="result" class="hidden">
+  <div class="card">
+    <h2>2. 处理结果</h2>
+    <div class="stats">
+      <div class="stat"><b id="origDur">-</b><span>原始时长</span></div>
+      <div class="stat"><b id="outDur">-</b><span>成品时长</span></div>
+      <div class="stat"><b id="saved">-</b><span>裁掉比例</span></div>
+      <div class="stat"><b id="segCount">-</b><span>保留段数</span></div>
+      <div class="stat"><b id="fmt">-</b><span>采样率 / 声道</span></div>
+    </div>
+    <div class="audio-grid">
+      <div>
+        <label>原始音频</label>
+        <audio id="origAudio" controls></audio>
+      </div>
+      <div>
+        <label>成品音频（去静音后）</label>
+        <audio id="outAudio" controls></audio>
+      </div>
+    </div>
+    <div class="actions">
+      <a id="dlAudio" href="#" download="output.wav">⬇ 下载成品 WAV</a>
+      <a id="dlJson" href="#" download="mapping.json">⬇ 下载时间映射 JSON</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>3. 分段明细（原始 ↔ 成品时间轴）</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>#</th><th>原始开始</th><th>原始结束</th>
+          <th>成品开始</th><th>成品结束</th><th>段时长</th>
+        </tr>
+      </thead>
+      <tbody id="segBody"></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>4. 查询原始时间点</h2>
+    <div class="row">
+      <div class="field" style="max-width:220px">
+        <label>原始时间点（秒）</label>
+        <input type="number" id="queryT" step="0.001" min="0" placeholder="例如 12.5">
+      </div>
+      <div class="field" style="flex:0;align-self:flex-end">
+        <button id="queryBtn" type="button">查询</button>
+      </div>
+    </div>
+    <div id="queryResult"></div>
+  </div>
+</div>
+
+<script>
+let currentJob = null;
+let currentFile = null;
+
+function fmt(sec) {
+  if (sec === null || sec === undefined) return "-";
+  const m = Math.floor(sec / 60);
+  const s = sec - m * 60;
+  return `${String(m).padStart(2, "0")}:${s.toFixed(3).padStart(6, "0")}`;
+}
+
+document.getElementById("processBtn").addEventListener("click", async () => {
+  const fileInput = document.getElementById("file");
+  const errEl = document.getElementById("error");
+  errEl.textContent = "";
+  if (!fileInput.files.length) {
+    errEl.textContent = "请先选择 WAV 或 MP3 文件";
+    return;
+  }
+  currentFile = fileInput.files[0];
+  const btn = document.getElementById("processBtn");
+  btn.disabled = true;
+  btn.textContent = "处理中…";
+  try {
+    const fd = new FormData();
+    fd.append("file", currentFile);
+    fd.append("threshold_db", document.getElementById("threshold").value);
+    fd.append("min_silence", document.getElementById("minSilence").value);
+    fd.append("padding_ms", document.getElementById("padding").value);
+    const resp = await fetch("/api/process", { method: "POST", body: fd });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || "处理失败");
+    currentJob = data;
+    renderResult(data);
+  } catch (e) {
+    errEl.textContent = e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "开始处理";
+  }
+});
+
+function renderResult(data) {
+  document.getElementById("result").classList.remove("hidden");
+  document.getElementById("origDur").textContent = fmt(data.original_duration);
+  document.getElementById("outDur").textContent = fmt(data.output_duration);
+  const saved = data.original_duration > 0
+    ? ((1 - data.output_duration / data.original_duration) * 100).toFixed(1) + "%"
+    : "-";
+  document.getElementById("saved").textContent = saved;
+  document.getElementById("segCount").textContent = data.segments.length;
+  document.getElementById("fmt").textContent =
+    `${data.sample_rate} Hz / ${data.channels} 声道`;
+
+  document.getElementById("origAudio").src = URL.createObjectURL(currentFile);
+  document.getElementById("outAudio").src = `/api/jobs/${data.job_id}/audio`;
+  document.getElementById("dlAudio").href = `/api/jobs/${data.job_id}/audio`;
+  document.getElementById("dlJson").href = `/api/jobs/${data.job_id}/mapping`;
+
+  const tbody = document.getElementById("segBody");
+  tbody.innerHTML = "";
+  data.segments.forEach((seg, i) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML =
+      `<td>${i + 1}</td>` +
+      `<td>${fmt(seg.original_start)}</td>` +
+      `<td>${fmt(seg.original_end)}</td>` +
+      `<td>${fmt(seg.output_start)}</td>` +
+      `<td>${fmt(seg.output_end)}</td>` +
+      `<td>${(seg.original_end - seg.original_start).toFixed(3)}s</td>`;
+    tbody.appendChild(tr);
+  });
+  document.getElementById("queryResult").textContent = "";
+}
+
+document.getElementById("queryBtn").addEventListener("click", async () => {
+  const out = document.getElementById("queryResult");
+  if (!currentJob) return;
+  const t = document.getElementById("queryT").value;
+  if (t === "") { out.textContent = "请输入时间点"; return; }
+  const resp = await fetch(`/api/jobs/${currentJob.job_id}/query?t=${encodeURIComponent(t)}`);
+  const data = await resp.json();
+  if (!resp.ok) { out.textContent = data.detail || "查询失败"; return; }
+  if (data.removed) {
+    out.innerHTML = `原始 <b>${fmt(data.input_time)}</b> 位于静音段，<span class="removed">已被裁掉</span>`;
+  } else {
+    out.innerHTML = `原始 <b>${fmt(data.input_time)}</b> → 成品 <span class="kept">${fmt(data.output_time)}</span>`;
+  }
+});
+</script>
+</body>
+</html>

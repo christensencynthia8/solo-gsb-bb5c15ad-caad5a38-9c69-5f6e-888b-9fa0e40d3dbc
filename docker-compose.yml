@@ -1,0 +1,14 @@
+services:
+  silence-remover:
+    build: .
+    container_name: silence-remover
+    ports:
+      - "8000:8000"
+    environment:
+      - DATA_DIR=/data
+    volumes:
+      - silence-data:/data
+    restart: unless-stopped
+
+volumes:
+  silence-data:
