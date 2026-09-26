@@ -1,0 +1,15 @@
+services:
+  silence-cutter:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      # Optional tuning:
+      # MAX_UPLOAD_MB: "200"
+      DATA_DIR: /data
+    volumes:
+      - silence-data:/data
+    restart: unless-stopped
+
+volumes:
+  silence-data:

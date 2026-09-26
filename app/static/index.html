@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>口述录音去静音</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="container">
+    <h1>🎙️ 口述录音去静音</h1>
+    <p class="subtitle">上传 WAV / MP3，自动裁掉静音段并拼接为 WAV，保留原始声道数与采样率。</p>
+
+    <section class="card">
+      <form id="upload-form">
+        <div class="field">
+          <label for="file">音频文件</label>
+          <input type="file" id="file" accept=".wav,.mp3,audio/wav,audio/mpeg" required>
+        </div>
+        <div class="grid">
+          <div class="field">
+            <label for="threshold">静音阈值 (dB)</label>
+            <input type="number" id="threshold" value="-40" min="-120" max="0" step="1">
+          </div>
+          <div class="field">
+            <label for="min-silence">最短静音长度 (ms)</label>
+            <input type="number" id="min-silence" value="500" min="1" step="50">
+          </div>
+          <div class="field">
+            <label for="padding">语音段前后保留 (ms)</label>
+            <input type="number" id="padding" value="150" min="0" step="50">
+          </div>
+        </div>
+        <button type="submit" id="submit-btn">开始处理</button>
+        <span id="status" class="status"></span>
+      </form>
+    </section>
+
+    <section id="result" class="card hidden">
+      <h2>处理结果</h2>
+      <div class="durations">
+        <div><span class="num" id="orig-dur"></span><label>原始时长</label></div>
+        <div class="arrow">→</div>
+        <div><span class="num" id="out-dur"></span><label>成品时长</label></div>
+        <div><span class="num" id="saved"></span><label>裁掉</label></div>
+      </div>
+      <p class="meta" id="format-info"></p>
+
+      <h3>试听</h3>
+      <div class="players">
+        <div><label>原始</label><audio id="player-orig" controls></audio></div>
+        <div><label>成品</label><audio id="player-out" controls></audio></div>
+      </div>
+
+      <div class="downloads">
+        <a id="dl-audio" class="btn" download>⬇ 下载成品 WAV</a>
+        <a id="dl-json" class="btn" download>⬇ 下载 JSON 时间映射</a>
+      </div>
+
+      <h3>分段明细（<span id="seg-count"></span> 段）</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>#</th><th>原始起</th><th>原始止</th><th>成品起</th><th>成品止</th></tr>
+          </thead>
+          <tbody id="seg-table"></tbody>
+        </table>
+      </div>
+
+      <h3>时间点查询</h3>
+      <div class="query">
+        <input type="number" id="query-t" min="0" step="0.01" placeholder="原始时间点（秒）">
+        <button id="query-btn" type="button">查询</button>
+        <span id="query-result"></span>
+      </div>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
